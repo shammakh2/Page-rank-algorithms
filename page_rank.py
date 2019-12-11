@@ -1,6 +1,8 @@
+import random
 import os
 import time
 from progress import Progress
+import networkx as nx
 
 WEB_DATA = os.path.join(os.path.dirname(__file__), 'school_web.txt')
 
@@ -22,19 +24,23 @@ def load_graph(fd):
     Each line in the file contains two white space seperated URLs and
     denotes a directed edge (link) from the first URL to the second.
     """
+    graph = nx.DiGraph()
+    with fd as file:
     # Iterate through the file line by line
-    for line in fd:
-        # And split each line into two URLs
-        node, target = line.split()
-        raise RuntimeError("This function is not implemented yet.")
+        for line in file:
+            # And split each line into two URLs
+            node, target = line.split()
+            graph.add_edge(node,target)
+    return graph
 
 
 def print_stats(graph):
-        """Print number of nodes and edges in the given graph"""
-        raise RuntimeError("This function is not implemented yet.")
+    """Print number of nodes and edges in the given graph"""
+    print("Number of nodes: ", len(graph.nodes))
+    print("Number of nodes: ", len(graph.nodes))
 
 
-def stochastic_page_rank(graph, n_iter=1_000_000, n_steps=100):
+def stochastic_page_rank(graph, par, n_iter=1_000_000, n_steps=100):
     """Stochastic PageRank estimation
 
     Parameters:
@@ -49,10 +55,19 @@ def stochastic_page_rank(graph, n_iter=1_000_000, n_steps=100):
     a random walk that starts on a random node will after n_steps end
     on each node of the given graph.
     """
-    raise RuntimeError("This function is not implemented yet.")
+    hitcount = {}
+    for node in graph.nodes():
+        hitcount.setdefault(node, 0)
+    for iter in range(n_iter):
+        par += 1
+        par.show()
+        current_node = random.choice(list(graph.nodes))
+        for steps in range(n_steps):
+            current_node = random.choice([n for n in graph.neighbors(current_node)])
+        hitcount[current_node] += 1/n_iter
+    return hitcount
 
-
-def distribution_page_rank(graph, n_iter=100):
+def distribution_page_rank(graph, par, n_iter=100):
     """Probabilistic PageRank estimation
 
     Parameters:
@@ -65,7 +80,21 @@ def distribution_page_rank(graph, n_iter=100):
     This function estimates the Page Rank by iteratively calculating
     the probability that a random walker is currently on any node.
     """
-    raise RuntimeError("This function is not implemented yet.")
+    node_prob = {}
+    next_prob = {}
+    for nodes in graph.nodes:
+        node_prob.setdefault(nodes, 1/len(graph.nodes))
+    for times in range(n_iter):
+        par += 1
+        for set in graph.nodes:
+            next_prob[set] = 0
+        for node in graph.nodes:
+            p = node_prob[node]/graph.out_degree(node)
+            for target in graph.out_edges(node):
+                next_prob[target[1]] += p
+    node_prob = next_prob
+    return node_prob
+
 
 
 def main():
@@ -80,12 +109,14 @@ def main():
     # should be a small multiple of the graph diameter.
     diameter = 3
 
+    # Making progress bar
+    par = Progress((len(web)**2) + (2*diameter), "Calculating PageRank estimate:")
     # Measure how long it takes to estimate PageRank through random walks
     print("Estimate PageRank through random walks:")
     n_iter = len(web)**2
     n_steps = 2*diameter
     start = time.time()
-    ranking = stochastic_page_rank(web, n_iter, n_steps)
+    ranking = stochastic_page_rank(web, par, n_iter, n_steps)
     stop = time.time()
     time_stochastic = stop - start
 
@@ -98,10 +129,9 @@ def main():
     print("Estimate PageRank through probability distributions:")
     n_iter = 2*diameter
     start = time.time()
-    ranking = distribution_page_rank(web, n_iter)
+    ranking = distribution_page_rank(web, par, n_iter)
     stop = time.time()
     time_probabilistic = stop - start
-
     # Show top 20 pages with their page rank and time it took to compute
     top = sorted(ranking.items(), key=lambda item: item[1], reverse=True)
     print('\n'.join(f'{100*v:.2f}\t{k}' for k,v in top[:20]))

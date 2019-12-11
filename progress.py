@@ -23,7 +23,7 @@ class Progress:
     It is allowed to manually alter prog.counter and prog.total during
     use.
     """
-    def __init__(self, total, title="Progress", width=80):
+    def __init__(self, total, title="Progress", width=130):
         """Initialize Progress bar
 
         Parameters:
@@ -55,6 +55,7 @@ class Progress:
         empty_width = bar_width - full_width
         sys.stdout.write('\r'+title+'['+full_width*'#'+empty_width*'.'+']')
         sys.stdout.flush()
+
 
     def finish(self):
         """Hide progress bar"""

@@ -3,6 +3,7 @@ import os
 import time
 from progress import Progress
 import networkx as nx
+import concurrent.futures
 
 WEB_DATA = os.path.join(os.path.dirname(__file__), 'school_web.txt')
 
@@ -37,10 +38,10 @@ def load_graph(fd):
 def print_stats(graph):
     """Print number of nodes and edges in the given graph"""
     print("Number of nodes: ", len(graph.nodes))
-    print("Number of nodes: ", len(graph.nodes))
+    print("Number of edges: ", len(graph.edges))
 
 
-def stochastic_page_rank(graph, par, n_iter=1_000_000, n_steps=100):
+def stochastic_page_rank(graph, n_iter=1_000_000, n_steps=100):
     """Stochastic PageRank estimation
 
     Parameters:
@@ -55,6 +56,13 @@ def stochastic_page_rank(graph, par, n_iter=1_000_000, n_steps=100):
     a random walk that starts on a random node will after n_steps end
     on each node of the given graph.
     """
+    start = time.time()
+    outEdgy = {}
+    for x in graph.nodes:
+        for out in graph.out_edges(x):
+            outEdgy.setdefault(out[0], []).append(out[1])
+    print(outEdgy)
+    par = Progress(n_iter, 'Calculating Stochastic PageRank:')
     hitcount = {}
     for node in graph.nodes():
         hitcount.setdefault(node, 0)
@@ -63,11 +71,13 @@ def stochastic_page_rank(graph, par, n_iter=1_000_000, n_steps=100):
         par.show()
         current_node = random.choice(list(graph.nodes))
         for steps in range(n_steps):
-            current_node = random.choice([n for n in graph.neighbors(current_node)])
+            current_node = random.choice(outEdgy[current_node])
         hitcount[current_node] += 1/n_iter
-    return hitcount
+    stop = time.time()
+    time_stochastic = stop - start
+    return hitcount, time_stochastic
 
-def distribution_page_rank(graph, par, n_iter=100):
+def distribution_page_rank(graph, n_iter=100):
     """Probabilistic PageRank estimation
 
     Parameters:
@@ -80,12 +90,15 @@ def distribution_page_rank(graph, par, n_iter=100):
     This function estimates the Page Rank by iteratively calculating
     the probability that a random walker is currently on any node.
     """
+    start = time.time()
+    par = Progress(n_iter, 'Calculating Distribution PageRank: ')
     node_prob = {}
     next_prob = {}
     for nodes in graph.nodes:
         node_prob.setdefault(nodes, 1/len(graph.nodes))
     for times in range(n_iter):
         par += 1
+        par.show()
         for set in graph.nodes:
             next_prob[set] = 0
         for node in graph.nodes:
@@ -93,7 +106,9 @@ def distribution_page_rank(graph, par, n_iter=100):
             for target in graph.out_edges(node):
                 next_prob[target[1]] += p
     node_prob = next_prob
-    return node_prob
+    stop = time.time()
+    time_probabilistic = stop - start
+    return node_prob, time_probabilistic
 
 
 
@@ -108,34 +123,27 @@ def main():
     # between any two nodes. The number of random steps of walkers
     # should be a small multiple of the graph diameter.
     diameter = 3
+    with concurrent.futures.ProcessPoolExecutor() as pool:
+        # Measure how long it takes to estimate PageRank through random walks
+        print("Estimate PageRank through random walks:")
+        n_iter = len(web)**2
+        n_steps = 2*diameter
+        p1 = pool.submit(stochastic_page_rank, web, n_iter, n_steps)
+        p1r,time_stochastic  = p1.result()
+        # Show top 20 pages with their page rank and time it took to compute
+        top = sorted(p1r.items(), key=lambda item: item[1], reverse=True)
+        print('\n'.join(f'{100*v:.2f}\t{k}' for k,v in top[:20]))
+        print(f'Calculation took {time_stochastic:.2f} seconds.\n')
 
-    # Making progress bar
-    par = Progress((len(web)**2) + (2*diameter), "Calculating PageRank estimate:")
-    # Measure how long it takes to estimate PageRank through random walks
-    print("Estimate PageRank through random walks:")
-    n_iter = len(web)**2
-    n_steps = 2*diameter
-    start = time.time()
-    ranking = stochastic_page_rank(web, par, n_iter, n_steps)
-    stop = time.time()
-    time_stochastic = stop - start
-
-    # Show top 20 pages with their page rank and time it took to compute
-    top = sorted(ranking.items(), key=lambda item: item[1], reverse=True)
-    print('\n'.join(f'{100*v:.2f}\t{k}' for k,v in top[:20]))
-    print(f'Calculation took {time_stochastic:.2f} seconds.\n')
-
-    # Measure how long it takes to estimate PageRank through probabilities
-    print("Estimate PageRank through probability distributions:")
-    n_iter = 2*diameter
-    start = time.time()
-    ranking = distribution_page_rank(web, par, n_iter)
-    stop = time.time()
-    time_probabilistic = stop - start
-    # Show top 20 pages with their page rank and time it took to compute
-    top = sorted(ranking.items(), key=lambda item: item[1], reverse=True)
-    print('\n'.join(f'{100*v:.2f}\t{k}' for k,v in top[:20]))
-    print(f'Calculation took {time_probabilistic:.2f} seconds.\n')
+        # Measure how long it takes to estimate PageRank through probabilities
+        print("Estimate PageRank through probability distributions:")
+        n_iter = 2*100
+        p2 = pool.submit(distribution_page_rank, web, n_iter)
+        p2r, time_probabilistic = p2.result()
+        # Show top 20 pages with their page rank and time it took to compute
+        top = sorted(p2r.items(), key=lambda item: item[1], reverse=True)
+        print('\n'.join(f'{100*v:.2f}\t{k}' for k,v in top[:20]))
+        print(f'Calculation took {time_probabilistic:.2f} seconds.\n')
 
     # Compare the compute time of the two methods
     speedup = time_stochastic/time_probabilistic
